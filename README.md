@@ -13,6 +13,15 @@ container-lint Dockerfile --format json --fail-on error
 Exit codes: `0` clean, `1` findings at or above `--fail-on` (default `warning`),
 `2` nothing to lint. That makes it drop-in for CI.
 
+## Install
+
+```bash
+pip install git+https://github.com/Ankitavasudev/container-lint@v2.0.0
+```
+
+Python 3.9+ and `pyyaml` are the only requirements — no Docker daemon, no network.
+From a clone, `pip install .` does the same thing and keeps `examples/` around.
+
 ## Rules
 
 Rule ids follow [hadolint](https://github.com/hadolint/hadolint)'s `DL30xx`
