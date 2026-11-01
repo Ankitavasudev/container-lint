@@ -1,0 +1,8 @@
+"""Allow `python -m container_lint`."""
+
+import sys
+
+from .cli import main
+
+if __name__ == "__main__":
+    sys.exit(main())

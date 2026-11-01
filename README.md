@@ -1,92 +1,99 @@
-# Container Lint
+﻿# container-lint
 
-> Advanced Dockerfile linting tool with 15+ rules, health check validation, complexity analysis, and security scanning.
-
-[![CI](https://github.com/Ankitavasudev/container-lint/actions/workflows/ci.yml/badge.svg)](https://github.com/Ankitavasudev/container-lint/actions)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://python.org)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-
-## Features
-
-- **15+ Lint Rules** - Comprehensive Dockerfile validation
-- **Health Check Validation** - Verifies HEALTHCHECK instructions
-- **Complexity Analysis** - Detects overly complex builds
-- **Security Scanner** - Identifies security vulnerabilities
-- **Best Practices** - Enforces Docker best practices
-- **CI/CD Ready** - Exit codes for pipeline integration
-
-## Quick Start
+Lint Dockerfiles and `docker-compose.yml` files **without a Docker daemon**.
+Pure Python, one dependency (`pyyaml`), usable as a library or a CLI.
 
 ```bash
-# Install
-git clone https://github.com/Ankitavasudev/container-lint.git
-cd container-lint
-pip install -r requirements.txt
-
-# Lint a Dockerfile
-python linter.py Dockerfile
-
-# Security scan
-python security_scanner.py Dockerfile
-
-# Complexity analysis
-python complexity_analyzer.py Dockerfile
-
-# Health check validation
-python health_check.py Dockerfile
+pip install .
+container-lint path/to/Dockerfile
+container-lint .                    # walk the tree for Dockerfiles + compose files
+container-lint Dockerfile --format json --fail-on error
 ```
 
-## Lint Rules
+Exit codes: `0` clean, `1` findings at or above `--fail-on` (default `warning`),
+`2` nothing to lint. That makes it drop-in for CI.
 
-| Rule | Severity | Description |
-|------|----------|-------------|
-| DL001 | ERROR | Use COPY instead of ADD |
-| DL002 | WARNING | Avoid latest tag |
-| DL003 | WARNING | Pin package versions |
-| DL004 | ERROR | Use multi-stage builds |
-| DL005 | WARNING | Minimize layers |
-| DL006 | ERROR | Run as non-root |
-| DL007 | WARNING | Use .dockerignore |
-| DL008 | WARNING | Add HEALTHCHECK |
-| DL009 | INFO | Use specific base image |
-| DL010 | WARNING | Avoid apt-get upgrade |
-| DL011 | WARNING | Clean apt cache |
-| DL012 | INFO | Use LABEL metadata |
-| DL013 | WARNING | Avoid curl pipe bash |
-| DL014 | WARNING | Pin versions in apt |
-| DL015 | INFO | Use WORKDIR properly |
+## Rules
 
-## Security Rules
+Rule ids follow [hadolint](https://github.com/hadolint/hadolint)'s `DL30xx`
+naming so existing ignore-lists keep working.
 
-| Rule | Severity | Description |
-|------|----------|-------------|
-| SEC001 | CRITICAL | Running as root |
-| SEC002 | CRITICAL | No USER instruction |
-| SEC003 | WARNING | Exposed ports |
-| SEC004 | WARNING | No health check |
-| SEC005 | INFO | Using latest tag |
+| Rule | Severity | Check |
+|---|---|---|
+| `DL3007` | warning | base image has no tag or digest, or uses `:latest` |
+| `DL3022` | info | multi-stage build where no stage is named with `AS` |
+| `DL3008` | warning | `apt-get install` without `-y` (build would hang) |
+| `DL3009` | info | `/var/lib/apt/lists` not removed after installing |
+| `DL3015` | warning | `apt-get upgrade` inside the image |
+| `DL4006` | warning | download piped straight into a shell interpreter |
+| `DL3045` | warning | `COPY . .` pulls in the whole build context |
+| `DL3020` | info | `ADD` from a URL â€” `COPY` is enough |
+| `DL3002` | warning | no `USER`, or `USER root` |
+| `DL3025` | info | shell-form `CMD`, which breaks signal handling |
+| `DL3013` | info | `EXPOSE` on a privileged port (<1024, excluding 80/443) |
 
-## Architecture
+Compose files get their own checks:
 
+| Rule | Severity | Check |
+|---|---|---|
+| `DC001` / `DC002` / `DC003` | error | file shape is not a `services` mapping |
+| `DC100` | warning | service image is unpinned |
+| `DC200` | error | `privileged: true` |
+| `DC201` | warning | `network_mode: host` |
+| `DC300` | info | port published on every interface |
+| `DC400` | warning | hardcoded secret in `environment` |
+
+Secrets that come from `${VAR}` are not flagged, and neither are obvious
+placeholders (`changeme`, `xxx`, â€¦).
+
+## Try it
+
+`examples/` contains a deliberately broken Dockerfile and compose file:
+
+```bash
+container-lint examples
+# 14 issue(s): 1 error, 7 warning, 6 info
 ```
-container-lint/
-├── linter.py              # Main linter with 15+ rules
-├── security_scanner.py    # Security vulnerability scanner
-├── complexity_analyzer.py # Build complexity analysis
-├── health_check.py        # HEALTHCHECK validation
-├── advanced_rules.py      # Extended rule set
-├── requirements.txt       # Python dependencies
-├── Dockerfile             # Self-contained container
-└── .github/workflows/     # CI/CD pipeline
+
+## Library use
+
+```python
+from container_lint import DockerfileLinter, DockerComposeLinter
+
+for issue in DockerfileLinter().lint("Dockerfile"):
+    print(issue.severity, issue.rule, issue.message)
+
+DockerComposeLinter().lint("docker-compose.yml")
 ```
 
-## Tech Stack
+Both linters also expose `lint_lines(lines, filename)` / `lint_data(dict, filename)`
+so you can lint strings from a test or an HTTP request without touching disk.
+`LintIssue.as_dict()` returns the JSON shape used by `--format json`.
 
-- **Python 3.9+** - Core language
-- **Rich** - Terminal output formatting
-- **Dockerfile parser** - Dockerfile AST parsing
-- **pytest** - Testing framework
+## CI
+
+```yaml
+- uses: actions/checkout@v4
+- uses: actions/setup-python@v5
+  with:
+    python-version: "3.11"
+- run: pip install .
+- run: container-lint . --fail-on error
+```
+
+See [docs/cicd-integration.md](docs/cicd-integration.md) for GitLab and
+pre-commit variants.
+
+## Development
+
+```bash
+pip install -e . -r requirements-dev.txt
+python -m pytest -q
+```
+
+47 tests, no network, no Docker.
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) for details.
+MIT â€” see [LICENSE](LICENSE).
+

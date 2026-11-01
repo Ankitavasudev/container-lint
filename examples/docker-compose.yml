@@ -1,0 +1,12 @@
+# Deliberately bad sample used by the README and the CI smoke test.
+services:
+  db:
+    image: postgres
+    privileged: true
+    environment:
+      POSTGRES_PASSWORD: hunter2
+  proxy:
+    image: traefik:3.1
+    network_mode: host
+    ports:
+      - "0.0.0.0:8080:80"
