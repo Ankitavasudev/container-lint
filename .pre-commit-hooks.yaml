@@ -1,0 +1,8 @@
+- id: container-lint
+  name: container-lint
+  description: Lint Dockerfiles and compose files without a Docker daemon
+  entry: container-lint
+  language: python
+  language_version: python3
+  files: '(^|/)(Dockerfile[^/]*|[^/]+\.dockerfile|docker-compose[^/]*\.ya?ml|compose\.ya?ml)$'
+  pass_filenames: true

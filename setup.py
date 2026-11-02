@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="container-lint",
-    version="2.0.0",
+    version="2.1.0",
     description="Lint Dockerfiles and docker-compose files without a Docker daemon",
     author="Ankita Salaria",
     author_email="ankitasalaria21@gmail.com",

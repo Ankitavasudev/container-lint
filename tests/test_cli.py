@@ -103,3 +103,44 @@ def test_default_targets_come_from_cwd(tmp_path, capsys, monkeypatch):
     assert main(["--format", "json", "--fail-on", "never"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload[0]["file"].endswith("Dockerfile")
+
+
+def test_directory_scan_skips_files_it_cannot_parse(tmp_path, capsys):
+    """A repo contains binaries and lock files; scanning it must not crash."""
+    write(tmp_path, "Dockerfile", CLEAN_DOCKERFILE)
+    (tmp_path / "package-lock.bin").write_bytes(b"\xe6\x00\x01binary")
+    (tmp_path / ".venv").mkdir()
+    write(tmp_path / ".venv", "Dockerfile", "FROM scratch\n")
+
+    assert main([str(tmp_path), "--fail-on", "never"]) == 0
+    out = capsys.readouterr().out
+    assert "No issues found." in out
+    assert "package-lock" not in out
+
+
+def test_explicit_binary_file_reports_a_readable_error(tmp_path, capsys):
+    path = tmp_path / "Dockerfile"
+    path.write_bytes(b"FROM alpine\xe6\n")
+    assert main([str(path)]) == 1
+    out = capsys.readouterr().out
+    assert "FILE_ENCODING" in out
+    assert "not valid UTF-8" in out
+
+
+def test_sarif_format_from_the_cli(tmp_path, capsys):
+    path = write(tmp_path, "Dockerfile", BAD_DOCKERFILE)
+    main([str(path), "--format", "sarif", "--fail-on", "never"])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["version"] == "2.1.0"
+    assert payload["runs"][0]["results"]
+    assert payload["runs"][0]["tool"]["driver"]["name"] == "container-lint"
+
+
+def test_directory_scan_finds_the_same_files_pre_commit_does(tmp_path, capsys):
+    """`*.dockerfile` is matched by the pre-commit hook, so the scan must too."""
+    write(tmp_path, "app.dockerfile", BAD_DOCKERFILE)
+
+    assert main([str(tmp_path), "--format", "json", "--fail-on", "never"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload
+    assert payload[0]["file"].endswith("app.dockerfile")

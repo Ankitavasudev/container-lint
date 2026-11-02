@@ -39,3 +39,21 @@ jobs:
           test $? -eq 1
           python -c "import json;d=json.load(open('lint.json'));assert len(d)==14, len(d)"
           python -c "import json;print(sorted({i['rule'] for i in json.load(open('lint.json'))}))"
+
+      - name: SARIF output is valid 2.1.0
+        run: |
+          set +e
+          container-lint examples --format sarif > lint.sarif
+          test $? -eq 1
+          python - <<'PY'
+          import json
+
+          log = json.load(open("lint.sarif"))
+          assert log["version"] == "2.1.0"
+          run = log["runs"][0]
+          assert run["tool"]["driver"]["name"] == "container-lint"
+          assert len(run["results"]) == 14
+          assert {r["ruleId"] for r in run["results"]} == {
+              r["id"] for r in run["tool"]["driver"]["rules"]
+          }
+          PY

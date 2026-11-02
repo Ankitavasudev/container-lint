@@ -8,22 +8,38 @@ import sys
 from pathlib import Path
 from typing import Iterable, List
 
+from . import __version__
 from .linter import DockerComposeLinter, DockerfileLinter, LintIssue
+from .sarif import dumps as sarif_dumps
 
 SEVERITY_ORDER = {"info": 1, "warning": 2, "error": 3}
 SEVERITY_COLOURS = {"info": "\033[36m", "warning": "\033[33m", "error": "\033[31m"}
 COMPOSE_NAMES = {"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
+SKIP_DIRS = {".git", ".hg", ".svn", ".venv", "venv", "node_modules",
+             "__pycache__", ".pytest_cache", ".mypy_cache", ".tox"}
 
 
 def _default_targets() -> List[Path]:
     """With no arguments, lint the Dockerfiles and compose files in this directory."""
+    return _targets_in(Path("."))
+
+
+def _is_target(path: Path) -> bool:
+    """A directory scan only descends into files this linter understands."""
+    return (
+        path.name == "Dockerfile"
+        or path.name.startswith("Dockerfile.")
+        or path.suffix == ".dockerfile"
+        or path.name in COMPOSE_NAMES
+    )
+
+
+def _targets_in(directory: Path) -> List[Path]:
     found = []
-    for path in sorted(Path(".").rglob("*")):
-        if ".git" in path.parts or not path.is_file():
+    for path in sorted(directory.rglob("*")):
+        if any(part in SKIP_DIRS for part in path.parts):
             continue
-        if path.name == "Dockerfile" or path.name.startswith("Dockerfile."):
-            found.append(path)
-        elif path.name in COMPOSE_NAMES:
+        if path.is_file() and _is_target(path):
             found.append(path)
     return found
 
@@ -41,7 +57,7 @@ def lint_paths(paths: Iterable[Path]) -> List[LintIssue]:
             issues.append(LintIssue(str(path), 0, "error", "FILE_READ", "file not found"))
             continue
         if path.is_dir():
-            issues.extend(lint_paths(sorted(p for p in path.rglob("*") if p.is_file())))
+            issues.extend(lint_paths(_targets_in(path)))
             continue
         if _kind(path) == "compose":
             issues.extend(DockerComposeLinter().lint(str(path)))
@@ -81,7 +97,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="Files or directories to lint (default: scan the current directory)",
     )
     parser.add_argument(
-        "--format", choices=["text", "json"], default="text", help="Output format",
+        "--format", choices=["text", "json", "sarif"], default="text",
+        help="Output format (sarif is what GitHub code scanning consumes)",
     )
     parser.add_argument(
         "--fail-on", choices=["error", "warning", "info", "never"], default="warning",
@@ -102,6 +119,8 @@ def main(argv: "list[str] | None" = None) -> int:
 
     if args.format == "json":
         print(json.dumps([issue.as_dict() for issue in issues], indent=2))
+    elif args.format == "sarif":
+        print(sarif_dumps(issues, version=__version__))
     else:
         print_text(issues)
 

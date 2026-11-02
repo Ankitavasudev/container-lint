@@ -44,6 +44,11 @@ class DockerfileLinter:
     def lint(self, filepath: str) -> List[LintIssue]:
         try:
             content = Path(filepath).read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            return [LintIssue(
+                filepath, 0, "error", "FILE_ENCODING",
+                "file is not valid UTF-8, so it cannot be linted",
+            )]
         except OSError as exc:
             return [LintIssue(filepath, 0, "error", "FILE_READ", str(exc))]
         return self.lint_lines(content.splitlines(), filepath)
