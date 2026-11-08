@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>container-lint — lint Dockerfiles in your browser</title>
+<meta name="description" content="Paste a Dockerfile or docker-compose.yml and get hadolint-style findings instantly. 14 rules, no daemon, no upload — the same rules as the container-lint CLI.">
+<style>
+:root {
+  color-scheme: dark;
+  --bg: #0f141b;
+  --panel: #161d26;
+  --panel-2: #1c2430;
+  --line: #26303d;
+  --fg: #e8edf4;
+  --muted: #8593a6;
+  --error: #f85149;
+  --warn: #e3a008;
+  --info: #58a6ff;
+  --ok: #3fb950;
+  --accent: #f0a020; /* amber */
+  --accent-dim: rgba(240,160,32,.14);
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  color: var(--fg);
+  font: 15px/1.55 "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  background:
+    radial-gradient(700px 420px at 12% -10%, rgba(240,160,32,.10), transparent 60%),
+    radial-gradient(600px 400px at 95% 5%, rgba(88,166,255,.07), transparent 55%),
+    var(--bg);
+  min-height: 100vh;
+}
+.wrap { max-width: 1160px; margin: 0 auto; padding: 24px 20px 56px; }
+
+/* ---------- top bar ---------- */
+.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.brand { display: flex; align-items: center; gap: 12px; }
+.logo { width: 38px; height: 38px; border-radius: 10px; display: grid; place-items: center;
+  background: linear-gradient(150deg, var(--accent), #c47a10);
+  color: #1a1204; box-shadow: 0 8px 24px rgba(240,160,32,.3);
+  font: 700 17px var(--mono); }
+h1 { font-size: 21px; margin: 0; letter-spacing: -.01em; }
+h1 code { color: var(--accent); font-size: .8em; }
+.tagline { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.nav { display: flex; gap: 8px; align-items: center; }
+.ghost { display: inline-flex; align-items: center; gap: 7px; padding: 8px 14px; border: 1px solid var(--line);
+  border-radius: 9px; background: var(--panel); color: var(--muted); font-size: 13px; text-decoration: none; cursor: pointer;
+  transition: color .15s, border-color .15s, transform .15s; }
+.ghost:hover { color: var(--fg); border-color: #37434f; transform: translateY(-1px); }
+.ghost.primary { background: var(--accent); border-color: transparent; color: #1a1204; font-weight: 700; }
+.ghost.primary:hover { filter: brightness(1.08); }
+.ghost svg { width: 15px; height: 15px; }
+
+/* ---------- layout ---------- */
+.grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; }
+@media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,.35); }
+.panel-h { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 12px 16px; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+.panel-h h2 { margin: 0; font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+.sample-row { display: flex; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+  font: 600 11px var(--mono); border: 1px solid currentColor; white-space: nowrap; }
+.chip.error { color: var(--error); }
+.chip.warning { color: var(--warn); }
+.chip.info { color: var(--info); }
+.chip.ok { color: var(--ok); }
+
+/* editor */
+textarea { display: block; width: 100%; height: 460px; resize: vertical; border: 0; outline: 0;
+  padding: 16px; background: transparent; color: var(--fg);
+  font: 13px/1.6 var(--mono); tab-size: 2; white-space: pre; overflow: auto; }
+textarea::placeholder { color: #4a5563; }
+.foot { display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 10px 16px; border-top: 1px solid var(--line); color: var(--muted);
+  font-size: 11.5px; font-family: var(--mono); flex-wrap: wrap; }
+
+/* results */
+.results { padding: 12px; max-height: 520px; overflow-y: auto; }
+.empty { color: var(--muted); font-size: 13px; text-align: center; padding: 36px 12px; }
+.empty b { color: var(--fg); }
+.group { margin-bottom: 14px; }
+.group-h { display: flex; align-items: center; gap: 8px; padding: 6px 6px 8px; }
+.issue { display: flex; gap: 10px; padding: 9px 10px; border: 1px solid var(--line);
+  border-left: 3px solid var(--muted); border-radius: 9px; margin: 7px 6px; background: var(--panel-2);
+  animation: pop .28s ease; }
+@keyframes pop { from { opacity: 0; transform: translateY(6px) scale(.98); } }
+.issue.error { border-left-color: var(--error); }
+.issue.warning { border-left-color: var(--warn); }
+.issue.info { border-left-color: var(--info); }
+.issue .rule { font: 600 10.5px var(--mono); color: var(--muted); margin-top: 2px; }
+.issue .msg { font-size: 13px; }
+.issue .line { font: 600 11px var(--mono); color: var(--muted); min-width: 46px; }
+.score { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--line); }
+.score-num { font: 700 34px var(--mono); }
+.score-num.great { color: var(--ok); }
+.score-num.good  { color: var(--warn); }
+.score-num.bad   { color: var(--error); }
+.score-note { color: var(--muted); font-size: 12px; }
+
+.rules { margin-top: 18px; }
+.rules summary { cursor: pointer; color: var(--muted); font-size: 12.5px; padding: 6px 0; }
+.rules table { width: 100%; border-collapse: collapse; font-size: 12px; margin-top: 8px; }
+.rules th, .rules td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); }
+.rules th { color: var(--muted); font-weight: 600; }
+.rules code { font-family: var(--mono); font-size: 11px; }
+
+.toast { position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+  padding: 9px 18px; border: 1px solid var(--line); border-radius: 10px;
+  background: rgba(15,20,27,.96); font-size: 13px; z-index: 30; box-shadow: 0 14px 34px rgba(0,0,0,.5); }
+.toast[hidden] { display: none; }
+.kbd { padding: 1px 6px; border: 1px solid var(--line); border-radius: 5px; font: 11px var(--mono); color: var(--fg); background: var(--panel-2); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="brand">
+      <div class="logo">&gt;_</div>
+      <div>
+        <h1>container<code>-lint</code></h1>
+        <div class="tagline">Dockerfile &amp; compose linter — no daemon, no upload.</div>
+      </div>
+    </div>
+    <div class="nav">
+      <button class="ghost" id="sampleBtn" title="Load an intentionally broken Dockerfile">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+        Sample
+      </button>
+      <button class="ghost" id="soundBtn" title="Toggle sound">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg>
+        Sound
+      </button>
+      <a class="ghost primary" href="https://github.com/Ankitavasudev/container-lint" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.7.5.7 5.5.7 11.7c0 5 3.2 9.2 7.6 10.8.6.1.8-.2.8-.6v-2c-3.1.7-3.8-1.5-3.8-1.5-.5-1.3-1.2-1.6-1.2-1.6-1-.7.1-.7.1-.7 1.1.1 1.7 1.1 1.7 1.1 1 1.7 2.6 1.2 3.3.9.1-.7.4-1.2.7-1.5-2.5-.3-5.1-1.2-5.1-5.6 0-1.2.4-2.2 1.1-3-.1-.3-.5-1.4.1-2.9 0 0 .9-.3 3 1.1a10.5 10.5 0 0 1 5.5 0c2-1.4 3-1.1 3-1.1.6 1.5.2 2.6.1 2.9.7.8 1.1 1.8 1.1 3 0 4.4-2.6 5.3-5.1 5.6.4.3.8 1 .8 2v3c0 .4.2.7.8.6 4.4-1.6 7.6-5.8 7.6-10.8C23.3 5.5 18.3.5 12 .5z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+
+  <div class="score" id="scoreStrip" hidden>
+    <div class="score-num good" id="scoreNum">0</div>
+    <div class="score-note" id="scoreNote">Run the linter on your Dockerfile</div>
+  </div>
+
+  <div class="grid">
+    <!-- editor panel -->
+    <section class="panel" aria-label="Dockerfile editor">
+      <div class="panel-h">
+        <h2>Dockerfile / compose <span id="fileKind"></span></h2>
+        <button class="chip ok" id="lintBtn" style="cursor:pointer; border:0">Lint now</button>
+      </div>
+      <textarea id="editor" spellcheck="false" placeholder="FROM ubuntu&#10;RUN apt-get install curl&#10;..."></textarea>
+      <div class="foot">
+        <span id="statLine">0 lines · 0 findings</span>
+        <span><span class="kbd">Ctrl</span>+<span class="kbd">L</span> lint</span>
+      </div>
+    </section>
+
+    <!-- results panel -->
+    <section class="panel" aria-label="Lint findings">
+      <div class="panel-h"><h2>Findings</h2><div class="sample-row" id="counts"></div></div>
+      <div class="results" id="results">
+        <div class="empty">Nothing yet.<br><b>Paste a Dockerfile → Lint</b><br><span style="font-size:12px">14 hadolint-style rules · same as the CLI</span></div>
+      </div>
+    </section>
+  </div>
+
+  <details class="rules">
+    <summary>Rules implemented (14, hadolint <code>DL30xx</code>)</summary>
+    <table>
+      <thead><tr><th>Rule</th><th>Severity</th><th>Check</th></tr></thead>
+      <tbody>
+        <tr><td><code>DL3007</code></td><td>warning</td><td>base image has no tag/digest or uses :latest</td></tr>
+        <tr><td><code>DL3008</code></td><td>warning</td><td>apt-get install without -y (build hangs)</td></tr>
+        <tr><td><code>DL3009</code></td><td>info</td><td>/var/lib/apt/lists not removed after install</td></tr>
+        <tr><td><code>DL3015</code></td><td>warning</td><td>apt-get upgrade inside the image</td></tr>
+        <tr><td><code>DL4006</code></td><td>warning</td><td>download piped straight into a shell</td></tr>
+        <tr><td><code>DL3045</code></td><td>warning</td><td>COPY . . pulls in the whole build context</td></tr>
+        <tr><td><code>DL3020</code></td><td>info</td><td>ADD from a URL (use COPY)</td></tr>
+        <tr><td><code>DL3002</code></td><td>warning</td><td>container runs as root / no USER</td></tr>
+        <tr><td><code>DL3025</code></td><td>info</td><td>CMD not in JSON exec form</td></tr>
+        <tr><td><code>DL3013</code></td><td>info</td><td>EXPOSE privileged port (&lt;1024, not 80/443)</td></tr>
+        <tr><td><code>DL3022</code></td><td>info</td><td>multi-stage build with no named stage</td></tr>
+        <tr><td><code>FILE_ENCODING</code></td><td>error</td><td>file is not valid text</td></tr>
+        <tr><td><code>DC100</code></td><td>warning</td><td>compose service pins no image version</td></tr>
+        <tr><td><code>DC200</code></td><td>error</td><td>compose service runs privileged</td></tr>
+      </tbody>
+    </table>
+  </details>
+
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+/* ============================================================ sound ======== */
+const Sound = (() => {
+  let ctx = null, muted = localStorage.getItem('cl-sound') === '0';
+  const ensure = () => {
+    if (!ctx) try { ctx = new (window.AudioContext||window.webkitAudioContext)(); } catch { ctx = null; }
+    if (ctx && ctx.state === 'suspended') ctx.resume();
+    return ctx;
+  };
+  const tone = (freq, dur, type='sine', gain=0.07, slide=0) => {
+    if (muted) return; const c = ensure(); if (!c) return;
+    const now = c.currentTime, o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, now);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq+slide), now+dur);
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(gain, now+0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, now+dur);
+    o.connect(g).connect(c.destination); o.start(now); o.stop(now+dur+0.02);
+  };
+  return {
+    run: () => { tone(440, .06, 'square', .05); setTimeout(() => tone(587, .07, 'square', .05), 60); },
+    clean: () => { tone(523,.08,'sine',.09); setTimeout(()=>tone(659,.08,'sine',.09),90); setTimeout(()=>tone(784,.12,'sine',.09),180); },
+    warn:  () => tone(370, .18, 'sawtooth', .06, -140),
+    sample:() => tone(740, .05, 'triangle', .06),
+    toggleMute: () => {
+      muted = !muted; localStorage.setItem('cl-sound', muted ? '0' : '1');
+      if (!muted) tone(880, .06, 'sine', .08);
+      return muted;
+    },
+    isMuted: () => muted,
+  };
+})();
+
+/* ============================================================ lint ======== */
+const $ = id => document.getElementById(id);
+const editor = $('editor'), results = $('results'), counts = $('counts');
+const scoreNum = $('scoreNum'), scoreNote = $('scoreNote'), scoreStrip = $('scoreStrip');
+const statLine = $('statLine'), toastEl = $('toast');
+
+function toast(msg){
+  toastEl.textContent = msg; toastEl.hidden = false;
+  clearTimeout(toast._t); toast._t = setTimeout(() => toastEl.hidden = true, 2200);
+}
+const SAMPLE = `FROM ubuntu
+RUN apt-get install curl
+COPY . .
+RUN curl https://example.com/install.sh | sh
+EXPOSE 8080
+CMD python app.py`;
+
+function hasTag(image){
+  if (image.includes('@')) return true;
+  const last = image.split('/').pop();
+  return last.includes(':') && !last.endsWith(':latest');
+}
+
+function lintDockerfile(lines, file){
+  let issues = [], fromCount = 0, namedStages = 0, unnamedFroms = [], hasUser = false;
+  const add = (line, severity, rule, message) =>
+    issues.push({ file, line, severity, rule, message });
+
+  lines.forEach((raw, i) => {
+    const number = i + 1, line = raw.trim();
+    if (!line || line.startsWith('#')) return;
+    const parts = line.split(/\s+/, 2);
+    const instruction = parts[0].toUpperCase();
+    const rest = parts[1] || '';
+
+    if (instruction === 'FROM'){
+      fromCount++;
+      const image = rest.split(/\s+as\s+/i)[0].trim();
+      if (!hasTag(image)) add(number, 'warning', 'DL3007',
+        `Pin the base image: '${image}' has no version tag or digest`);
+      if (/\s+as\s+/i.test(line)) namedStages++;
+      else if (fromCount > 1) unnamedFroms.push(number);
+
+    } else if (instruction === 'RUN'){
+      const lower = line.toLowerCase();
+      if (lower.includes('apt-get install') && !lower.includes(' -y'))
+        add(number, 'warning', 'DL3008', 'Add -y to apt-get install so the build does not hang');
+      if (lower.includes('apt-get install') && !lower.includes('rm -rf /var/lib/apt/lists'))
+        add(number, 'info', 'DL3009', 'Remove /var/lib/apt/lists/* after installing to shrink the layer');
+      if ((lower.includes('curl') || lower.includes('wget')) && lower.includes('|') && /\b(sh|bash|zsh)\b/.test(lower))
+        add(number, 'warning', 'DL4006', 'Piping a download into a shell hides failures; verify a checksum or use pipefail');
+      if (lower.includes('apt-get upgrade') || lower.includes('apt upgrade'))
+        add(number, 'warning', 'DL3015', 'Avoid upgrade in image builds; rebuild from an updated base instead');
+
+    } else if (instruction === 'COPY'){
+      if (rest.trim() === '. .' || rest.trim() === '. ./')
+        add(number, 'warning', 'DL3045', 'Copy specific files, not the whole build context (add a .dockerignore)');
+
+    } else if (instruction === 'ADD'){
+      if (rest.includes('://'))
+        add(number, 'info', 'DL3020', 'Prefer COPY; ADD only for local archives');
+
+    } else if (instruction === 'USER'){
+      hasUser = true;
+      if (['root', '0'].includes(rest.trim()))
+        add(number, 'warning', 'DL3002', 'Do not run the container as root');
+
+    } else if (instruction === 'CMD'){
+      if (rest && !rest.trim().startsWith('['))
+        add(number, 'info', 'DL3025', 'Use the JSON form of CMD so signals reach the process');
+
+    } else if (instruction === 'EXPOSE'){
+      rest.split(/\s+/).forEach(p => {
+        const digits = (p.match(/\d+/) || [])[0];
+        if (digits && +digits < 1024 && digits !== '80' && digits !== '443')
+          add(number, 'info', 'DL3013', `Exposing privileged port ${digits}; bind to 8080/8443 instead`);
+      });
+    }
+  });
+
+  if (fromCount && !hasUser)
+    add(0, 'warning', 'DL3002', 'No USER instruction: the container will run as root');
+  if (fromCount > 1 && namedStages === 0)
+    unnamedFroms.forEach(n => add(n, 'info', 'DL3022',
+      "Name this build stage with 'AS <name>' for multi-stage builds"));
+  return issues;
+}
+
+function lintCompose(text, file){
+  const issues = [];
+  const secretWords = ['password','passwd','secret','token','api_key','apikey','private_key'];
+  let imageFound = false, privileged = false, hostNet = false, ports0 = 0, secrets = 0;
+  text.split('\n').forEach((raw, i) => {
+    const number = i + 1, line = raw.trim();
+    if (!line || line.startsWith('#')) return;
+    const img = line.match(/^image:\s*["']?([^"'\s]+)/);
+    if (img){ imageFound = true; if (!hasTag(img[1])) issues.push({file, line: number, severity:'warning', rule:'DC100', message:`Service pins no version: ${img[1]}`}); }
+    if (/^privileged:\s*true/i.test(line)) { privileged = true; issues.push({file, line: number, severity:'error', rule:'DC200', message:'Service runs privileged'}); }
+    if (/^network_mode:\s*host/i.test(line)) issues.push({file, line: number, severity:'warning', rule:'DC201', message:'Service uses host networking'});
+    if (/^ports:/i.test(line)) return; // handled below with context
+    const port = line.match(/-\s*["']?([0-9]+(\.0\.0\.0)?:[0-9]+|[0-9]+:[0-9]+)/);
+    if (port && line.includes('://') === false) {}
+    // detect 0.0.0.0 publish like "0.0.0.0:8080:80" or bare "8080:80" (fine) — count only 0.0.0.0
+    if (line.includes('0.0.0.0:')) { ports0++; issues.push({file, line: number, severity:'info', rule:'DC300', message:'Service publishes on every interface (0.0.0.0)'}); }
+    const envMatch = line.match(/^[- ]?([A-Za-z_][A-Za-z0-9_.-]*)=([^#\n]+)/);
+    if (envMatch){ const key = envMatch[1].toLowerCase(); if (secretWords.some(w => key.includes(w))){ const v = envMatch[2].trim(); if (v && v !== 'changeme' && v !== 'password' && v !== 'secret' && !v.startsWith('${')){ secrets++; issues.push({file, line: number, severity:'warning', rule:'DC400', message:`'${envMatch[1]}' looks like a hardcoded secret`}); } } }
+  });
+  if (!imageFound && !/services:/i.test(text)) issues.push({file, line: 1, severity:'error', rule:'DC001', message:"No 'services' section found"});
+  return issues;
+}
+
+function lint(){
+  const text = editor.value;
+  const trimmed = text.trim();
+  Sound.run();
+  if (!trimmed){
+    results.innerHTML = '<div class="empty">Nothing to lint.<br>Paste a Dockerfile or compose file first.</div>';
+    counts.innerHTML = '';
+    scoreStrip.hidden = true;
+    statLine.textContent = '0 lines · 0 findings';
+    return;
+  }
+  const isCompose = /(^|\n)\s*services\s*:/i.test(trimmed) || /(^|\n)\s*version\s*:/i.test(trimmed) || (trimmed.match(/^\s*image:/gm) || []).length > 0 && !/^\s*FROM\s/im.test(trimmed);
+  const lines = text.split('\n');
+  const issues = isCompose ? lintCompose(text, 'docker-compose.yml') : lintDockerfile(lines, 'Dockerfile');
+  const linesCount = lines.length;
+  statLine.textContent = `${linesCount} lines · ${issues.length} findings`;
+
+  if (!issues.length){
+    results.innerHTML = '<div class="empty"><div style="font-size:34px">✓</div><b>Clean.</b><br><span style="font-size:12px;color:var(--muted)">No findings — same output the CLI would give</span></div>';
+    counts.innerHTML = '<span class="chip ok">CLEAN</span>';
+    scoreNum.textContent = '100'; scoreNote.textContent = 'Perfect score — nothing to change';
+    scoreNum.className = 'score-num great'; scoreStrip.hidden = false;
+    Sound.clean();
+    return;
+  }
+
+  // group by rule
+  const countsMap = { error: 0, warning: 0, info: 0 };
+  issues.forEach(i => countsMap[i.severity]++);
+  counts.innerHTML = ['error','warning','info'].filter(s => countsMap[s]).map(s =>
+    `<span class="chip ${s}">${s.toUpperCase()} ${countsMap[s]}</span>`).join('');
+
+  // render grouped by severity
+  const order = { error: 0, warning: 1, info: 2 };
+  issues.sort((a, b) => order[a.severity] - order[b.severity] || a.line - b.line);
+  results.innerHTML = issues.map(i => `
+    <div class="issue ${i.severity}">
+      <span class="line">${i.line ? 'L' + i.line : 'global'}</span>
+      <span><div class="msg">${escapeHtml(i.message)}</div><div class="rule">${i.rule}</div></span>
+    </div>`).join('');
+
+  const score = Math.max(0, 100 - countsMap.error * 30 - countsMap.warning * 10 - countsMap.info * 3);
+  scoreNum.textContent = score;
+  scoreNum.className = 'score-num ' + (score >= 85 ? 'great' : score >= 60 ? 'good' : 'bad');
+  scoreNote.textContent = score >= 85 ? 'Looks solid' : score >= 60 ? 'Fix the warnings' : 'Needs work';
+  scoreStrip.hidden = false;
+  Sound.warn();
+}
+function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+$('lintBtn').addEventListener('click', lint);
+editor.addEventListener('input', () => { statLine.textContent = `${editor.value.split('\n').length} lines · run lint`; });
+document.addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'l'){ e.preventDefault(); lint(); }
+});
+$('sampleBtn').addEventListener('click', () => {
+  editor.value = SAMPLE;
+  Sound.sample();
+  toast('Loaded a broken Dockerfile — hit Lint');
+  statLine.textContent = `${SAMPLE.split('\n').length} lines · run lint`;
+});
+$('soundBtn').addEventListener('click', () => {
+  const m = Sound.toggleMute();
+  toast(m ? 'Sound off' : 'Sound on');
+});
+
+// auto-lint the sample on first load so visitors see it work instantly
+editor.value = SAMPLE;
+statLine.textContent = `${SAMPLE.split('\n').length} lines · run lint`;
+lint();
+</script>
+</body>
+</html>
