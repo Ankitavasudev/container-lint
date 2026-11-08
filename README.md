@@ -1,5 +1,7 @@
 ﻿# container-lint
 
+[![Live demo](https://img.shields.io/badge/%E2%96%B6%20LIVE%20DEMO-container--lint-f0a020?style=for-the-badge&logo=googlechrome&logoColor=white)](https://ankitavasudev.github.io/container-lint/)
+
 Lint Dockerfiles and `docker-compose.yml` files **without a Docker daemon**.
 Pure Python, one dependency (`pyyaml`), usable as a library or a CLI.
 
